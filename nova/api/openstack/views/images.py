@@ -37,6 +37,10 @@ class ViewBuilder(object):
 
     def _format_status(self, image):
         """Update the status field to standardize format."""
+
+        if 'status' not in image:
+            return
+
         status_mapping = {
             'active': 'ACTIVE',
             'queued': 'SAVING',
@@ -72,8 +76,8 @@ class ViewBuilder(object):
         """Return a standardized image structure for display by the API."""
         self._format_dates(image_obj)
 
-        if "status" in image_obj:
-            self._format_status(image_obj)
+        orig_status = image_obj.get('status', '')
+        self._format_status(image_obj)
 
         image = {
             "id": image_obj.get("id"),
@@ -90,10 +94,12 @@ class ViewBuilder(object):
                 "status": image_obj.get("status"),
             })
 
-            if image["status"].upper() == "ACTIVE":
-                image["progress"] = 100
-            else:
-                image["progress"] = 0
+            progress_map = {
+                'queued': 25,
+                'saving': 50,
+                'active': 100,
+            }
+            image["progress"] = progress_map.get(orig_status, 0)
 
         return image
 
