@@ -105,6 +105,11 @@ SysLogHandler = logging.handlers.SysLogHandler
 
 
 # our new audit level
+# TODO(ironcamel): Should we even be doing this? See warning at:
+# http://docs.python.org/howto/logging.html#custom-levels
+# Also, should AUDIT be set to logging.CRITICAL + 1? See:
+# http://docs.python.org/library/logging.html#logging.addLevelName
+# It states, "levels should increase in increasing order of severity."
 AUDIT = logging.INFO + 1
 logging.addLevelName(AUDIT, 'AUDIT')
 
@@ -152,26 +157,49 @@ class NovaLogger(logging.Logger):
                 level = globals()[level_name]
         self.setLevel(level)
 
-    def _log(self, level, msg, args, exc_info=None, extra=None, context=None):
-        """Extract context from any log call."""
-        if not extra:
-            extra = {}
-        if context is None:
-            context = getattr(local.store, 'context', None)
-        if context:
-            extra.update(_dictify_context(context))
-        extra.update({"nova_version": version.version_string_with_vcs()})
-        return logging.Logger._log(self, level, msg, args, exc_info, extra)
+    def _update_extra(fn):
+        def wrapper(self, msg, *args, **kwargs):
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {}
+            extra = kwargs.get('extra')
+            context = kwargs.get('context')
+            if context is None:
+                context = getattr(local.store, 'context', None)
+            if context:
+                extra.update(_dictify_context(context))
+            extra.update({"nova_version": version.version_string_with_vcs()})
+            fn(self, msg, *args, **kwargs)
+        return wrapper
+
+    @_update_extra
+    def debug(self, msg, *args, **kwargs):
+        super(NovaLogger, self).debug(msg, *args, **kwargs)
+
+    @_update_extra
+    def info(self, msg, *args, **kwargs):
+        super(NovaLogger, self).info(msg, *args, **kwargs)
+
+    @_update_extra
+    def warning(self, msg, *args, **kwargs):
+        super(NovaLogger, self).warning(msg, *args, **kwargs)
+
+    @_update_extra
+    def error(self, msg, *args, **kwargs):
+        super(NovaLogger, self).error(msg, *args, **kwargs)
+
+    @_update_extra
+    def critical(self, msg, *args, **kwargs):
+        super(NovaLogger, self).critical(msg, *args, **kwargs)
+
+    @_update_extra
+    def audit(self, msg, *args, **kwargs):
+        """Shortcut for our AUDIT level."""
+        self.log(AUDIT, msg, *args, **kwargs)
 
     def addHandler(self, handler):
         """Each handler gets our custom formatter."""
         handler.setFormatter(_formatter)
         return logging.Logger.addHandler(self, handler)
-
-    def audit(self, msg, *args, **kwargs):
-        """Shortcut for our AUDIT level."""
-        if self.isEnabledFor(AUDIT):
-            self._log(AUDIT, msg, args, **kwargs)
 
     def exception(self, msg, *args, **kwargs):
         """Logging.exception doesn't handle kwargs, so breaks context."""
